@@ -28,6 +28,7 @@ from twisted.web.client import PartialDownloadError
 from synapse.api.errors import Codes, LoginError, SynapseError
 from synapse.http.server import finish_request
 from synapse.http.servlet import RestServlet, parse_json_object_from_request
+from synapse.rest.well_known import WellKnownBuilder
 from synapse.types import UserID
 from synapse.util.msisdn import phone_number_to_msisdn
 
@@ -98,6 +99,7 @@ class LoginRestServlet(ClientV1RestServlet):
         self.auth_handler = self.hs.get_auth_handler()
         self.device_handler = self.hs.get_device_handler()
         self.handlers = hs.get_handlers()
+        self._well_known_builder = WellKnownBuilder(hs)
 
     def on_GET(self, request):
         flows = []
@@ -143,19 +145,20 @@ class LoginRestServlet(ClientV1RestServlet):
                 result = {
                     "uri": "%s%s" % (self.idp_redirect_url, relay_state)
                 }
-                defer.returnValue((200, result))
             elif self.jwt_enabled and (login_submission["type"] ==
                                        LoginRestServlet.JWT_TYPE):
                 result = yield self.do_jwt_login(login_submission)
-                defer.returnValue(result)
             elif login_submission["type"] == LoginRestServlet.TOKEN_TYPE:
                 result = yield self.do_token_login(login_submission)
-                defer.returnValue(result)
             else:
                 result = yield self._do_other_login(login_submission)
-                defer.returnValue(result)
         except KeyError:
             raise SynapseError(400, "Missing JSON keys.")
+
+        well_known_data = self._well_known_builder.get_well_known()
+        if well_known_data:
+            result["well_known"] = well_known_data
+        defer.returnValue((200, result))
 
     @defer.inlineCallbacks
     def _do_other_login(self, login_submission):
@@ -165,7 +168,7 @@ class LoginRestServlet(ClientV1RestServlet):
             login_submission:
 
         Returns:
-            (int, object): HTTP code/response
+            dict: HTTP response
         """
         # Log the request we got, but only certain fields to minimise the chance of
         # logging someone's password (even if they accidentally put it in the wrong
@@ -248,7 +251,7 @@ class LoginRestServlet(ClientV1RestServlet):
         if callback is not None:
             yield callback(result)
 
-        defer.returnValue((200, result))
+        defer.returnValue(result)
 
     @defer.inlineCallbacks
     def do_token_login(self, login_submission):
@@ -268,7 +271,7 @@ class LoginRestServlet(ClientV1RestServlet):
             "device_id": device_id,
         }
 
-        defer.returnValue((200, result))
+        defer.returnValue(result)
 
     @defer.inlineCallbacks
     def do_jwt_login(self, login_submission):
@@ -322,7 +325,7 @@ class LoginRestServlet(ClientV1RestServlet):
                 "home_server": self.hs.hostname,
             }
 
-        defer.returnValue((200, result))
+        defer.returnValue(result)
 
     def _register_device(self, user_id, login_submission):
         """Register a device for a user.
