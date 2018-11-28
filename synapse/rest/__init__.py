@@ -17,6 +17,7 @@
 from six import PY3
 
 from synapse.http.server import JsonResource
+from synapse.rest import well_known
 from synapse.rest.client import versions
 from synapse.rest.client.v1 import (
     admin,
@@ -72,6 +73,7 @@ class ClientRestResource(JsonResource):
     @staticmethod
     def register_servlets(client_resource, hs):
         versions.register_servlets(client_resource)
+        well_known.register_servlets(hs, client_resource)
 
         if not PY3:
             # "v1" (Python 2 only)
